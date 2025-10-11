@@ -2,24 +2,27 @@ import cv2
 import face_recognition
 import os
 
-# Create Images_Attendance folder if not exists
+# Create directory to store captured images if it doesn't exist
 if not os.path.exists("Images_Attendance"):
     os.makedirs("Images_Attendance")
 
-# Capture image from webcam
+# Initialize webcam
 cap = cv2.VideoCapture(0)
-print("Press 's' to capture your face...")
+print("Press 's' to capture your face for attendance")
 
 while True:
     ret, frame = cap.read()
+    if not ret:
+        continue
     cv2.imshow("Webcam", frame)
-    key = cv2.waitKey(1)
 
-    if key == ord('s'):  # press 's' to save face
-        cv2.imwrite("Images_Attendance/captured_face.jpg", frame)
-        print("Face captured!")
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('s'):  # Press 's' to capture face
+        img_path = "Images_Attendance/captured_face.jpg"
+        cv2.imwrite(img_path, frame)
+        print(f"Face captured and saved as {img_path}")
         break
-    elif key == ord('q'):  # quit
+    elif key == ord('q'):  # Press 'q' to quit
         cap.release()
         cv2.destroyAllWindows()
         exit()
@@ -27,8 +30,10 @@ while True:
 cap.release()
 cv2.destroyAllWindows()
 
-# Encode captured face
-imgCaptured = face_recognition.load_image_file("Images_Attendance/captured_face.jpg")
-imgCapturedEncoding = face_recognition.face_encodings(imgCaptured)[0]
-knownEncodings = [imgCapturedEncoding]
-knownNames = ["You"]  # replace "You" with your name if you like
+# Encode the captured face
+img = face_recognition.load_image_file(img_path)
+face_encoding = face_recognition.face_encodings(img)[0]
+known_face_encodings = [face_encoding]
+known_face_names = ["New User"]  # Replace with the user's name or prompt for input
+
+
