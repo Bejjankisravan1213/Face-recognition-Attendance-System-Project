@@ -3,8 +3,9 @@ import face_recognition
 import os
 import csv
 from datetime import datetime
+import numpy as np
 
-# === Ensure folders and files exist ===
+# === Setup ===
 if not os.path.exists("Images_Attendance"):
     os.makedirs("Images_Attendance")
 
@@ -12,96 +13,117 @@ if not os.path.exists("Attendance.csv"):
     with open("Attendance.csv", "w", newline="") as f:
         csv.writer(f).writerow(["Name", "Time"])
 
-# === Capture your face dynamically ===
+# === Helper function to check blink ===
+def is_blinking(landmarks):
+    left_eye = landmarks["left_eye"]
+    right_eye = landmarks["right_eye"]
+
+    def eye_aspect_ratio(eye):
+        A = np.linalg.norm(np.array(eye[1]) - np.array(eye[5]))
+        B = np.linalg.norm(np.array(eye[2]) - np.array(eye[4]))
+        C = np.linalg.norm(np.array(eye[0]) - np.array(eye[3]))
+        return (A + B) / (2.0 * C)
+
+    left_ear = eye_aspect_ratio(left_eye)
+    right_ear = eye_aspect_ratio(right_eye)
+    ear = (left_ear + right_ear) / 2.0
+
+    return ear < 0.21  # threshold for blink
+
+# === Load known faces (if any) ===
+known_encodings = []
+known_names = []
+
+for file in os.listdir("Images_Attendance"):
+    if file.endswith(".jpg"):
+        img = face_recognition.load_image_file(f"Images_Attendance/{file}")
+        encodings = face_recognition.face_encodings(img)
+        if len(encodings) > 0:
+            known_encodings.append(encodings[0])
+            known_names.append(os.path.splitext(file)[0])
+
+# === Start webcam ===
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():
     print("❌ Error: Cannot access webcam.")
     exit()
 
-print("Press 's' to capture your face or 'q' to quit.")
-name = input("Enter your name: ").strip()
+print("\n🎥 Blink once to capture your face...\n")
 
-if name == "":
-    print("❌ Name cannot be empty.")
-    cap.release()
-    exit()
+blink_count = 0
+photo_captured = False
+file_path = ""
 
 while True:
     ret, frame = cap.read()
     if not ret:
-        print("❌ Failed to capture frame from webcam.")
         break
 
-    cv2.imshow("Webcam", frame)
-    key = cv2.waitKey(1) & 0xFF
+    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    face_locations = face_recognition.face_locations(rgb)
+    face_landmarks_list = face_recognition.face_landmarks(rgb)
 
-    if key == ord('s'):  # Save face
-        file_path = f"Images_Attendance/{name}.jpg"
-        cv2.imwrite(file_path, frame)
-        print(f"✅ Face captured and saved as {file_path}")
-        break
-    elif key == ord('q'):
-        cap.release()
-        cv2.destroyAllWindows()
-        exit()
+    for face_location, landmarks in zip(face_locations, face_landmarks_list):
+        top, right, bottom, left = face_location
+        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 255), 2)
 
-cap.release()
-cv2.destroyAllWindows()
+        if is_blinking(landmarks):
+            blink_count += 1
+            cv2.putText(frame, "Blink Detected!", (left, top - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+        else:
+            blink_count = 0
 
-# === Load captured image and encode ===
-try:
-    imgCaptured = face_recognition.load_image_file(file_path)
-    encodings = face_recognition.face_encodings(imgCaptured)
-    if len(encodings) == 0:
-        print("❌ No face detected in the saved image. Try again.")
-        exit()
-    imgCapturedEncoding = encodings[0]
-except Exception as e:
-    print(f"❌ Error processing captured image: {e}")
-    exit()
+        # Capture after one blink
+        if blink_count == 1 and not photo_captured:
+            print("🟢 Blink detected! Capturing your face...")
+            photo_captured = True
+            file_path = "Images_Attendance/temp_capture.jpg"
+            cv2.imwrite(file_path, frame)
+            break
 
-# === Start live webcam recognition ===
-cap = cv2.VideoCapture(0)
-if not cap.isOpened():
-    print("❌ Error: Cannot access webcam.")
-    exit()
-
-print("\n🎥 Starting live face recognition... Press 'q' to quit.\n")
-
-attendance_marked = False
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        print("❌ Failed to capture frame from webcam.")
-        break
-
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    face_locations = face_recognition.face_locations(rgb_frame)
-    face_encodings = face_recognition.face_encodings(rgb_frame, face_locations)
-
-    for face_encoding, face_location in zip(face_encodings, face_locations):
-        matches = face_recognition.compare_faces([imgCapturedEncoding], face_encoding)
-        if True in matches:
-            top, right, bottom, left = face_location
-            cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
-            cv2.putText(frame, name, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-            if not attendance_marked:
-                with open("Attendance.csv", "r+", newline="") as f:
-                    existing = [row[0] for row in csv.reader(f)]
-                    if name not in existing:
-                        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        csv.writer(f).writerow([name, now])
-                        print(f"🟢 Attendance marked for {name} at {now}")
-                        attendance_marked = True
-
-    cv2.imshow("Face Recognition", frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    cv2.imshow("Blink to Capture", frame)
+    if photo_captured or cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
 cap.release()
 cv2.destroyAllWindows()
+
+# === If a new face was captured ===
+if photo_captured:
+    captured_img = face_recognition.load_image_file(file_path)
+    captured_encoding = face_recognition.face_encodings(captured_img)
+    if len(captured_encoding) == 0:
+        print("❌ No face detected. Try again.")
+        exit()
+    captured_encoding = captured_encoding[0]
+
+    matches = face_recognition.compare_faces(known_encodings, captured_encoding)
+    name = "Unknown"
+
+    if True in matches:
+        match_index = matches.index(True)
+        name = known_names[match_index]
+        print(f"✅ Face recognized: {name}")
+    else:
+        name = input("Enter your name to save: ").strip()
+        if name:
+            save_path = f"Images_Attendance/{name}.jpg"
+            cv2.imwrite(save_path, cv2.imread(file_path))
+            known_encodings.append(captured_encoding)
+            known_names.append(name)
+            print(f"✅ Saved new face as {name}")
+
+# === Mark attendance ===
+if name != "Unknown":
+    with open("Attendance.csv", "r+", newline="") as f:
+        existing = [row[0] for row in csv.reader(f)]
+        if name not in existing:
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            csv.writer(f).writerow([name, now])
+            print(f"🕒 Attendance marked for {name} at {now}")
+
+
 
 
 
