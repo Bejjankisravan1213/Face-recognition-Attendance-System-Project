@@ -58,7 +58,7 @@ def save_encoding(name, encoding):
 # ---------- STEP 1: BLINK TO CAPTURE ----------
 print("🎥 Blink once to capture your face...")
 
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # Force DirectShow on Windows
 blink_count = 0
 photo_captured = False
 file_path = ""
@@ -68,7 +68,7 @@ while True:
     if not ret or frame is None or frame.size == 0:
         continue
 
-    # Resize to 1/4 for speed and stability
+    # Resize for speed and convert to RGB 8-bit
     small_frame = cv2.resize(frame, (0, 0), fx=0.25, fy=0.25)
     rgb_small_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
     rgb_small_frame = np.ascontiguousarray(rgb_small_frame, dtype=np.uint8)
@@ -147,7 +147,7 @@ with open(ATTENDANCE_FILE, "a") as f:
 print(f"🕒 Attendance marked for {name} at {now}")
 
 # ---------- STEP 4: LIVE RECOGNITION ----------
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 print("🎥 Starting live recognition... Press 'q' to quit.")
 
 while True:
@@ -179,6 +179,8 @@ while True:
 
 cap.release()
 cv2.destroyAllWindows()
+
+
 
 
 
