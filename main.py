@@ -4,10 +4,11 @@ import os
 import pickle
 import numpy as np
 
+# ---------- CONFIG ----------
 ENCODING_FILE = "encodings.pkl"
 SAVE_FOLDER = "Captured_Images"
 
-# Setup folders and encoding file
+# ---------- SETUP ----------
 if not os.path.exists(SAVE_FOLDER):
     os.makedirs(SAVE_FOLDER)
 
@@ -15,6 +16,7 @@ if not os.path.exists(ENCODING_FILE):
     with open(ENCODING_FILE, "wb") as f:
         pickle.dump({}, f)
 
+# ---------- UTILS ----------
 def load_encodings():
     with open(ENCODING_FILE, "rb") as f:
         return pickle.load(f)
@@ -25,24 +27,29 @@ def save_encoding(name, encoding):
     with open(ENCODING_FILE, "wb") as f:
         pickle.dump(data, f)
 
-# Capture face
+# ---------- STEP 1: CAPTURE FACE ----------
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-print("🎥 Position your face in front of the camera and press 's' to capture...")
+print("🎥 Position your face in front of the camera. Press 's' to capture your face.")
 
 while True:
     ret, frame = cap.read()
-    if not ret or frame is None:
+    if not ret:
         continue
 
     cv2.imshow("Capture Face", frame)
     key = cv2.waitKey(1) & 0xFF
 
     if key == ord('s'):
-        img_path = os.path.join(SAVE_FOLDER, "temp.jpg")
-        # Save using imwrite and absolute path
-        cv2.imwrite(img_path, frame)
-        print("🟢 Face captured!")
-        break
+        if ret:
+            # Convert to RGB 8-bit, ensure memory layout and dtype for face_recognition
+            image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image_rgb = np.ascontiguousarray(image_rgb, dtype=np.uint8)
+            print("Shape:", image_rgb.shape)
+            print("Dtype:", image_rgb.dtype)
+            print("🟢 Face captured!")
+            break
+        else:
+            print("Error capturing frame, try again.")
     elif key == ord('q'):
         cap.release()
         cv2.destroyAllWindows()
@@ -51,30 +58,15 @@ while True:
 cap.release()
 cv2.destroyAllWindows()
 
-# Read image safely
-image_bgr = cv2.imread(img_path)
-if image_bgr is None:
-    print("❌ Failed to read captured image. Make sure path is correct and has no spaces.")
-    exit()
-
-# Convert to RGB and ensure uint8
-image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-image_rgb = np.array(image_rgb, dtype=np.uint8)
-
-# Check that image is not empty
-if image_rgb.size == 0:
-    print("❌ Image is empty. Cannot process.")
-    exit()
-
-# Encode face
+# ---------- STEP 2: ENCODE FACE ----------
 encodings = face_recognition.face_encodings(image_rgb)
 if len(encodings) == 0:
-    print("❌ No face detected in the captured image. Try again.")
+    print("❌ No face detected. Please try again.")
     exit()
 
 encoding = encodings[0]
 
-# Check if face exists
+# ---------- STEP 3: CHECK IF FACE EXISTS ----------
 data = load_encodings()
 matches = face_recognition.compare_faces(list(data.values()), encoding)
 name = None
@@ -86,9 +78,15 @@ if True in matches:
 else:
     name = input("Enter your name: ").strip()
     save_encoding(name, encoding)
-    # Save permanent copy of the face
-    cv2.imwrite(os.path.join(SAVE_FOLDER, f"{name}.jpg"), image_bgr)
+    # Save the face image for record
+    cv2.imwrite(os.path.join(SAVE_FOLDER, f"{name}.jpg"), frame)
     print(f"✅ Face saved as: {name}")
+
+# ---------- OPTIONAL: DISPLAY RECOGNIZED FACE ----------
+cv2.putText(frame, name, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0,255,0), 2)
+cv2.imshow("Recognized Face", frame)
+cv2.waitKey(3000)
+cv2.destroyAllWindows()
 
 
 
