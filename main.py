@@ -2,6 +2,7 @@ import cv2
 import face_recognition
 import os
 import pickle
+import numpy as np
 
 # ---------- CONFIG ----------
 ENCODING_FILE = "encodings.pkl"
@@ -15,7 +16,7 @@ if not os.path.exists(ENCODING_FILE):
     with open(ENCODING_FILE, "wb") as f:
         pickle.dump({}, f)
 
-# ---------- UTILS ----------
+# ---------- UTILITIES ----------
 def load_encodings():
     with open(ENCODING_FILE, "rb") as f:
         return pickle.load(f)
@@ -51,17 +52,26 @@ while True:
 cap.release()
 cv2.destroyAllWindows()
 
-# ---------- STEP 2: ENCODE FACE ----------
-image = face_recognition.load_image_file(img_path)
-encodings = face_recognition.face_encodings(image)
+# ---------- STEP 2: READ IMAGE AND CONVERT TO RGB 8-BIT ----------
+# Use OpenCV to read image
+image_bgr = cv2.imread(img_path)
+if image_bgr is None or image_bgr.size == 0:
+    print("❌ Failed to read captured image.")
+    exit()
 
+# Convert BGR -> RGB and ensure dtype uint8
+image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+image_rgb = np.ascontiguousarray(image_rgb, dtype=np.uint8)
+
+# ---------- STEP 3: ENCODE FACE ----------
+encodings = face_recognition.face_encodings(image_rgb)
 if len(encodings) == 0:
     print("❌ No face detected. Please try again.")
     exit()
 
 encoding = encodings[0]
 
-# ---------- STEP 3: CHECK IF FACE EXISTS ----------
+# ---------- STEP 4: CHECK IF FACE EXISTS ----------
 data = load_encodings()
 matches = face_recognition.compare_faces(list(data.values()), encoding)
 name = None
@@ -73,7 +83,10 @@ if True in matches:
 else:
     name = input("Enter your name: ").strip()
     save_encoding(name, encoding)
+    cv2.imwrite(os.path.join(SAVE_FOLDER, f"{name}.jpg"), image_bgr)
     print(f"✅ Face saved as: {name}")
+
+
 
 
 
